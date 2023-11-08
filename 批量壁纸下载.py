@@ -10,20 +10,21 @@ dirname = './wallhaven'
 basename = '/Volumes/Picture'
 
 
-def img_download(countent, headers, excluded_file):
+def img_download(countent, excluded_file):
     lt = re.findall(r'<li><figure.*?>.*?<a class="preview" href="(.*?)" .*?></a>.*?</figure></li>', countent,
                     flags=re.S)
     if not os.path.exists(dirname):
         os.mkdir(dirname)
-    download_src = 'https://w.wallhaven.cc/full/'
     for img_src in lt:
-        img_src = download_src + img_src[-6:-4] + '/wallhaven-' + img_src[-6:] + '.jpg'
-        file_name = dirname + '/' + img_src[-10:]
-        request = urllib.request.Request(url=img_src, headers=headers)
+        resp = http_get(img_src)
+        full_src = re.findall(r'<section id="showcase".*?>.*?<div.*?>.*?<img id="wallpaper" src="(.*?)" .*?>.*?</a>.*?</div></section>', resp,
+                        flags=re.S)[0]
+
+        file_name = full_src[full_src.rfind('-') + 1:]
+        file_name = dirname + '/' + file_name
         try:
-            response = urllib.request.urlopen(request)
+            raw_data = http_get(full_src, decode=False)
             print("%s开始下载" % file_name)
-            raw_data = response.read()
             md5 = hashlib.md5(raw_data).hexdigest()
             if md5 not in excluded_file:
                 with open(file_name, 'wb') as f:
@@ -33,6 +34,23 @@ def img_download(countent, headers, excluded_file):
                 print("%s重复，已过滤" % file_name)
         except urllib.error.HTTPError as e:
             print(f'{img_src} - {e}')
+
+
+def http_get(url: str, param: dict = None, decode: bool = True):
+    headers = {
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.142 Safari/537.36',
+    }
+    if param is not None:
+        url += "?"
+        for k, v in param.items():
+            url += k + "=" + str(v)
+
+    request = urllib.request.Request(url=url, headers=headers)
+    response_raw = urllib.request.urlopen(request).read()
+    if decode:
+        return response_raw.decode()
+    else:
+        return response_raw
 
 
 def request_get(url, headers, page):
@@ -49,13 +67,10 @@ def find_all_file():
 
 
 def main():
-    print("*" * 8, "壁纸批量下载", "*" * 8)
+    print("*" * 8, "wallhaven壁纸批量下载", "*" * 8)
     page_start = int(input("请输入开始页码:"))
     page_end = int(input("请输入结束页码:"))
-    url = 'https://wallhaven.cc/toplist?page='
-    headers = {
-        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.142 Safari/537.36',
-    }
+    homepage_url = 'https://wallhaven.cc/toplist'
 
     print("已有数据加载中...")
     exist_file_md5 = set()
@@ -67,13 +82,12 @@ def main():
 
     for page in range(page_start, page_end + 1):
         print("开始传输第%s页数据" % page)
-        request = request_get(url, headers, page)
-        content = urllib.request.urlopen(request).read().decode()
-        img_download(content, headers, exist_file_md5)
+        content = http_get(homepage_url, param={"page": page})
+        img_download(content, exist_file_md5)
         print("第%s页数据传输完成" % page)
         print()
         print()
-        time.sleep(0.5)
+        time.sleep(30)
 
 
 if __name__ == "__main__":
